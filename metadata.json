@@ -1,0 +1,7 @@
+{
+  "name": "MediSim: ER CME Simulator",
+  "description": "An interactive clinical case simulator that generates complex, high-stakes ER scenarios based on uploaded CME PDF documents. Features dynamic vital signs and AI-driven neural TTS for immersive bedside experience.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
