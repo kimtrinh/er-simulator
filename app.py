@@ -1,70 +1,79 @@
 import streamlit as st
 import google.generativeai as genai
 
-# --- PAGE SETUP ---
-st.set_page_config(page_title="MediSim ER", layout="wide")
-st.title("🏥 MediSim: High-Stakes ER Simulator")
+# --- 1. MEDICAL MONITOR STYLING (The "Vibe") ---
+st.set_page_config(page_title="MediSim: Clinical AI", layout="wide")
 
-# --- SIDEBAR CONFIG ---
-with st.sidebar:
-    st.header("Simulation Settings")
-    # Pull the key safely from Streamlit Secrets
-    if "GOOGLE_API_KEY" in st.secrets:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-        st.success("API Key Loaded from Secrets")
-    else:
-        api_key = st.text_input("Enter Gemini API Key", type="password")
-
-    st.markdown("---")
-    st.info("Use this arena to test the knowledge you synthesized on your Kindle Scribe.")
-
-# --- AI LOGIC ---
-if api_key:
-    genai.configure(api_key=api_key)
+# This CSS replicates the glowing green telemetry and dark monitor look
+st.markdown("""
+    <style>
+    .main { background-color: #050505; color: #00FFCC; }
+    .stApp { background-color: #050505; }
+    [data-testid="stHeader"] { background: rgba(0,0,0,0); }
     
-    # System Instruction: This is the "Brain" of your simulator
+    /* Telemetry Bar Styling */
+    .monitor-bar {
+        background-color: #0a0a0a;
+        border: 2px solid #1a1a1a;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 25px;
+        font-family: 'Courier New', Courier, monospace;
+        color: #00FF41;
+        box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+    }
+    .vital-label { font-size: 0.8rem; color: #666; }
+    .vital-value { font-size: 2rem; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. THE TELEMETRY MONITOR (Top Section) ---
+# This mimics the top bar in your React screenshot
+st.markdown(f"""
+    <div class="monitor-bar">
+        <div style="display: flex; justify-content: space-around; text-align: center;">
+            <div><span class="vital-label">ECG/HR</span><br><span class="vital-value" style="color: #ff3333;">152</span> <small>BPM</small></div>
+            <div><span class="vital-label">NIBP</span><br><span class="vital-value" style="color: #ffff00;">118/76</span> <small>MAP 90</small></div>
+            <div><span class="vital-label">SPO2</span><br><span class="vital-value" style="color: #33ccff;">97</span> <small>%</small></div>
+            <div><span class="vital-label">RESP</span><br><span class="vital-value" style="color: #ffffff;">18</span> <small>BRPM</small></div>
+        </div>
+        <div style="margin-top: 10px; border-top: 1px solid #333; padding-top: 10px; font-size: 0.8rem; color: #ff3333;">
+            ⚠️ ALARMS: ACTIVE — ATRIAL FIBRILLATION
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# --- 3. AI LOGIC & AUTH ---
+if "GOOGLE_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    
     system_instruction = (
         "You are an ER simulation engine. Act as the nurse, patient, and consultants. "
-        "The user is the lead physician. Provide real-time vitals and telemetry. "
-        "Be realistic and demanding. If the user makes a mistake, show the consequences."
-    )
-
-    # Initialize the model with the system instruction correctly
-    model = genai.GenerativeModel(
-        model_name='gemini-1.5-pro',
-        system_instruction=system_instruction
+        "The user is the lead physician. Stay in character as a medical professional. "
+        "The current telemetry is: HR 152 (AFib), BP 118/76, SpO2 97%. Respond as a high-pressure nurse."
     )
     
-    # Initialize chat history with correct roles ('user' and 'model')
+    model = genai.GenerativeModel(model_name='gemini-1.5-pro', system_instruction=system_instruction)
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display chat history
+    # Display chat
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # User Input
     if prompt := st.chat_input("Enter clinical order (e.g., 'Check Vitals')"):
-        # 1. Add user message to state
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # 2. Convert state to Gemini-friendly format (roles must be 'user' and 'model')
-        history = [
-            {"role": m["role"], "parts": [m["content"]]} 
-            for m in st.session_state.messages
-        ]
+        history = [{"role": m["role"], "parts": [m["content"]]} for m in st.session_state.messages]
 
-        # 3. Generate Response
         try:
             response = model.generate_content(history)
             with st.chat_message("assistant"):
                 st.markdown(response.text)
-            # Add AI message to state as 'model'
             st.session_state.messages.append({"role": "model", "content": response.text})
         except Exception as e:
-            st.error(f"The simulation crashed: {e}")
-else:
-    st.warning("Please ensure your GOOGLE_API_KEY is set in Advanced Settings > Secrets.")
+            st.error(f"System Offline: {e}")
