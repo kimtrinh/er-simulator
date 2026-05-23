@@ -87,7 +87,7 @@ const App: React.FC = () => {
 
   const processFileContent = async (buffer: ArrayBuffer, blob: Blob) => {
     if (!apiKey) {
-      setError("Please enter your Google Gemini API Key.");
+      setError("Please enter your Anthropic API Key.");
       return;
     }
 
@@ -134,6 +134,10 @@ const App: React.FC = () => {
     if (!file) return;
     if (file.type !== 'application/pdf') {
       setError("Please upload a PDF file.");
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setError("PDF is too large (max 50 MB).");
       return;
     }
     const buffer = await file.arrayBuffer();
@@ -279,10 +283,11 @@ const App: React.FC = () => {
                       <div className="flex justify-center">
                           <div className={`relative group w-full max-w-md ${!apiKey ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
                               <input 
-                                type="file" 
-                                accept="application/pdf" 
-                                onChange={handleFileUpload} 
+                                type="file"
+                                accept="application/pdf"
+                                onChange={handleFileUpload}
                                 disabled={!apiKey}
+                                aria-label="Upload a PDF medical guideline"
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                               />
                               <div className="border-2 border-dashed border-slate-600 rounded-xl p-8 group-hover:border-emerald-500 group-hover:bg-emerald-500/5 transition-all flex flex-col items-center justify-center gap-4 text-center">

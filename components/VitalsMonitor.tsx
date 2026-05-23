@@ -7,22 +7,28 @@ interface Props {
   vitals: Vitals;
 }
 
-const VitalBox = ({ 
-  label, 
-  value, 
-  unit, 
-  color, 
+const VitalBox = ({
+  label,
+  value,
+  unit,
+  color,
   flicker = false,
-  subValue
-}: { 
-  label: string, 
-  value: string | number, 
-  unit?: string, 
-  color: string, 
+  subValue,
+  isAbnormal = false
+}: {
+  label: string,
+  value: string | number,
+  unit?: string,
+  color: string,
   flicker?: boolean,
-  subValue?: string
+  subValue?: string,
+  isAbnormal?: boolean
 }) => (
-  <div className={`flex flex-col items-start justify-between bg-black/60 border border-slate-800 p-1.5 rounded w-full shadow-inner relative overflow-hidden ${flicker ? 'animate-pulse' : ''}`}>
+  <div
+    className={`flex flex-col items-start justify-between bg-black/60 border border-slate-800 p-1.5 rounded w-full shadow-inner relative overflow-hidden ${flicker ? 'animate-pulse' : ''}`}
+    role="status"
+    aria-label={`${label}: ${value}${unit ? ' ' + unit : ''}${isAbnormal ? ' — abnormal' : ''}`}
+  >
     <div className="absolute top-0 left-0 w-full h-[1px] bg-white/5"></div>
     <span className={`text-[9px] font-bold ${color} opacity-80 uppercase tracking-tighter`}>{label}</span>
     <div className="flex items-end gap-1">
@@ -50,20 +56,21 @@ const VitalsMonitor: React.FC<Props> = ({ vitals }) => {
     const interval = setInterval(() => {
       setLiveVitals(current => {
         const baseline = lastPropsVitals.current;
-        const jitter = (val: number, factor: number) => {
+        const jitter = (key: keyof Vitals, factor: number) => {
+          const val = current[key] as number;
+          const base = baseline[key] as number;
           const noise = (Math.random() - 0.5) * factor;
           const result = val + noise;
-          const baselineVal = baseline[Object.keys(baseline).find(key => baseline[key as keyof Vitals] === val) as keyof Vitals] as number;
-          if (Math.abs(result - baselineVal) > factor * 2) return baselineVal + (Math.random() - 0.5);
+          if (Math.abs(result - base) > factor * 2) return base + (Math.random() - 0.5);
           return result;
         };
 
         return {
           ...current,
-          hr: Math.round(jitter(current.hr, 1)),
-          rr: Math.round(jitter(current.rr, 1)),
-          o2: Math.min(100, Math.max(0, Math.round(jitter(current.o2, 0.5)))),
-          temp: parseFloat(jitter(current.temp, 0.02).toFixed(1))
+          hr: Math.round(jitter('hr', 1)),
+          rr: Math.round(jitter('rr', 1)),
+          o2: Math.min(100, Math.max(0, Math.round(jitter('o2', 0.5)))),
+          temp: parseFloat(jitter('temp', 0.02).toFixed(1))
         };
       });
     }, 2000);
@@ -106,31 +113,34 @@ const VitalsMonitor: React.FC<Props> = ({ vitals }) => {
 
         {/* Vital Parameters Bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <VitalBox 
-              label="ECG/HR" 
-              value={liveVitals.hr} 
-              unit="bpm" 
-              color={liveVitals.hr > 110 || liveVitals.hr < 55 ? 'text-red-500' : 'text-emerald-500'} 
+          <VitalBox
+              label="ECG/HR"
+              value={liveVitals.hr}
+              unit="bpm"
+              color={liveVitals.hr > 110 || liveVitals.hr < 55 ? 'text-red-500' : 'text-emerald-500'}
               flicker={liveVitals.hr > 120}
+              isAbnormal={liveVitals.hr > 110 || liveVitals.hr < 55}
           />
-          <VitalBox 
-              label="NIBP" 
-              value={`${liveVitals.bpSystolic}/${liveVitals.bpDiastolic}`} 
-              unit="mmHg" 
-              color={getBpColor(liveVitals.bpSystolic)} 
+          <VitalBox
+              label="NIBP"
+              value={`${liveVitals.bpSystolic}/${liveVitals.bpDiastolic}`}
+              unit="mmHg"
+              color={getBpColor(liveVitals.bpSystolic)}
               subValue={`MAP ${Math.round((liveVitals.bpSystolic + 2 * liveVitals.bpDiastolic) / 3)}`}
+              isAbnormal={liveVitals.bpSystolic < 95 || liveVitals.bpSystolic > 160}
           />
-          <VitalBox 
-              label="SpO2" 
-              value={liveVitals.o2} 
-              unit="%" 
-              color={getO2Color(liveVitals.o2)} 
+          <VitalBox
+              label="SpO2"
+              value={liveVitals.o2}
+              unit="%"
+              color={getO2Color(liveVitals.o2)}
+              isAbnormal={liveVitals.o2 < 93}
           />
-          <VitalBox 
-              label="Resp" 
-              value={liveVitals.rr} 
-              unit="brpm" 
-              color="text-cyan-400" 
+          <VitalBox
+              label="Resp"
+              value={liveVitals.rr}
+              unit="brpm"
+              color="text-cyan-400"
           />
         </div>
         
