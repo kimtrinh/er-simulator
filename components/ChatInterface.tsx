@@ -1,49 +1,43 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Message } from '../types';
-import { speakClinicalNarrative } from '../services/ttsService';
+import {
+  cancelSpeech,
+  isSpeechSynthesisSupported,
+  speakClinicalNarrative,
+} from '../services/webSpeechTtsService';
 
 interface Props {
   messages: Message[];
   isLoading: boolean;
-  apiKey: string;
 }
 
-const ChatInterface: React.FC<Props> = ({ messages, isLoading, apiKey }) => {
+const ChatInterface: React.FC<Props> = ({ messages, isLoading }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const ttsSupported = isSpeechSynthesisSupported();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  useEffect(() => () => cancelSpeech(), []);
+
   const handlePlayAudio = async (text: string, idx: number) => {
-    if (playingIdx !== null) return;
-    if (!apiKey) {
-      alert("Please configure your API Key to use TTS.");
+    if (!ttsSupported) return;
+    if (playingIdx === idx) {
+      cancelSpeech();
+      setPlayingIdx(null);
       return;
     }
-    
+    setPlayingIdx(idx);
     try {
-      setPlayingIdx(idx);
-      
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-          sampleRate: 24000
-        });
-      }
-      
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-
-      await speakClinicalNarrative(apiKey, text, audioContextRef.current);
+      await speakClinicalNarrative(text);
     } catch (err) {
       console.error("Audio playback failed", err);
     } finally {
-      setTimeout(() => setPlayingIdx(null), 1000);
+      setPlayingIdx(null);
     }
   };
 
@@ -70,9 +64,9 @@ const ChatInterface: React.FC<Props> = ({ messages, isLoading, apiKey }) => {
                 </div>
                 <button
                   onClick={() => handlePlayAudio(msg.content, idx)}
-                  disabled={playingIdx !== null}
-                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900/50 border border-slate-700/50 hover:bg-slate-700 transition-all group ${playingIdx === idx ? 'animate-pulse border-emerald-500/50' : ''}`}
-                  title="Play Clinical Voice"
+                  disabled={!ttsSupported || (playingIdx !== null && playingIdx !== idx)}
+                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900/50 border border-slate-700/50 hover:bg-slate-700 transition-all group disabled:opacity-50 disabled:cursor-not-allowed ${playingIdx === idx ? 'animate-pulse border-emerald-500/50' : ''}`}
+                  title={ttsSupported ? (playingIdx === idx ? 'Stop' : 'Play Clinical Voice') : 'Browser does not support Web Speech'}
                 >
                   <svg 
                     className={`w-3 h-3 ${playingIdx === idx ? 'text-emerald-500' : 'text-slate-400 group-hover:text-white'}`} 
@@ -83,7 +77,7 @@ const ChatInterface: React.FC<Props> = ({ messages, isLoading, apiKey }) => {
                     <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                   </svg>
                   <span className={`text-[9px] font-bold uppercase tracking-widest ${playingIdx === idx ? 'text-emerald-500' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                    {playingIdx === idx ? 'Playing...' : 'Voice'}
+                    {playingIdx === idx ? 'Stop' : 'Voice'}
                   </span>
                 </button>
               </div>
