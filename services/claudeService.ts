@@ -255,37 +255,11 @@ Do not name or hint at the diagnosis in 'intro'. Put the clinical truth and reas
   return { ...parsed, visualCatalog: finalVisuals };
 };
 
-/**
- * Extract the "narrative" string value from a partially-streamed JSON string.
- * Works because "narrative" is the first key in the schema, so it streams early.
- */
-function extractPartialNarrative(json: string): string | null {
-  let idx = json.indexOf('"narrative":"');
-  let start = idx !== -1 ? idx + '"narrative":"'.length : -1;
-  if (start === -1) {
-    idx = json.indexOf('"narrative": "');
-    start = idx !== -1 ? idx + '"narrative": "'.length : -1;
-  }
-  if (start === -1) return null;
-
-  let result = "";
-  for (let i = start; i < json.length; i++) {
-    if (json[i] === "\\" && i + 1 < json.length) {
-      const next = json[i + 1];
-      if (next === '"') { result += '"'; i++; }
-      else if (next === "n") { result += "\n"; i++; }
-      else if (next === "t") { result += "\t"; i++; }
-      else if (next === "\\") { result += "\\"; i++; }
-      else if (next === "/") { result += "/"; i++; }
-      else { result += json[i]; }
-    } else if (json[i] === '"') {
-      break;
-    } else {
-      result += json[i];
-    }
-  }
-  return result;
-}
+const simulationTool: Anthropic.Messages.Tool = {
+  name: "simulation_response",
+  description: "Submit the simulation response with narrative, updated vitals, and case state.",
+  input_schema: simulationResponseJsonSchema as Anthropic.Messages.Tool.InputSchema,
+};
 
 export const progressSimulation = async (
   apiKey: string,
@@ -314,7 +288,7 @@ ${recentHistory || "(no prior turns)"}
 Trainee action this turn:
 ${userAction}
 
-Respond with the simulation update.`;
+Respond by calling the simulation_response tool.`;
 
   const stream = client.messages.stream({
     model: TURN_MODEL,
@@ -327,23 +301,33 @@ Respond with the simulation update.`;
         cache_control: { type: "ephemeral" },
       },
     ],
-    output_config: {
-      effort: "medium",
-      format: { type: "json_schema", schema: simulationResponseJsonSchema },
-    },
+    output_config: { effort: "medium" },
+    tools: [simulationTool],
+    tool_choice: { type: "tool", name: "simulation_response" },
     messages: [{ role: "user", content: turnPrompt }],
   });
 
   if (onNarrativeUpdate) {
-    stream.on("text", (_delta, snapshot) => {
-      const partial = extractPartialNarrative(snapshot);
-      if (partial) onNarrativeUpdate(partial);
+    let lastNarrative = "";
+    stream.on("inputJson", (_delta, snapshot) => {
+      if (snapshot && typeof snapshot === "object") {
+        const s = snapshot as Record<string, unknown>;
+        if (typeof s.narrative === "string" && s.narrative !== lastNarrative) {
+          lastNarrative = s.narrative;
+          onNarrativeUpdate(s.narrative);
+        }
+      }
     });
   }
 
   const finalMsg = await stream.finalMessage();
-  const text = extractJsonText(finalMsg);
-  const parsed = SimulationResponseSchema.parse(JSON.parse(text));
+
+  const toolBlock = finalMsg.content.find(
+    (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use"
+  );
+  if (!toolBlock) throw new Error("Claude response contained no tool_use block");
+
+  const parsed = SimulationResponseSchema.parse(toolBlock.input);
 
   let validImageId: string | undefined;
   if (parsed.imageIdToDisplay && visuals.some((v) => v.id === parsed.imageIdToDisplay)) {
