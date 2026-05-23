@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { GameState, Message } from './types';
-import { analyzePDFAndStartCase, progressSimulation } from './services/geminiService';
+import { analyzePDFAndStartCase, progressSimulation } from './services/claudeService';
 import { extractImagesFromPDF } from './services/pdfService';
 import VitalsMonitor from './components/VitalsMonitor';
 import ChatInterface from './components/ChatInterface';
@@ -9,8 +9,8 @@ import Controls from './components/Controls';
 import DebriefScreen from './components/DebriefScreen';
 import ErrorModal from './components/ErrorModal';
 
-const SAVE_KEY = 'medisim_er_save_state';
-const API_KEY_STORAGE = 'medisim_er_api_key';
+const SAVE_KEY = 'medisim_er_save_state_v2';
+const API_KEY_STORAGE = 'medisim_er_anthropic_api_key';
 
 const fileToBase64 = (file: File | Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -27,7 +27,7 @@ const fileToBase64 = (file: File | Blob): Promise<string> => {
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>(() => {
-    return localStorage.getItem(API_KEY_STORAGE) || process.env.API_KEY || '';
+    return localStorage.getItem(API_KEY_STORAGE) || process.env.ANTHROPIC_API_KEY || '';
   });
 
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -71,6 +71,9 @@ const App: React.FC = () => {
 
   const startNewCase = () => {
     localStorage.removeItem(SAVE_KEY);
+    setError(null);
+    setIsLoading(false);
+    setLoadingStep('');
     setGameState({
       stage: 'upload',
       vitals: { hr: 0, bpSystolic: 0, bpDiastolic: 0, rr: 0, o2: 0, temp: 0, rhythm: '--' },
@@ -80,7 +83,6 @@ const App: React.FC = () => {
       caseContext: '',
       visuals: [],
     });
-    window.location.reload();
   };
 
   const processFileContent = async (buffer: ArrayBuffer, blob: Blob) => {
@@ -160,10 +162,7 @@ const App: React.FC = () => {
       );
 
       let imageUrl: string | undefined = undefined;
-      
-      if ((response as any)._generatedImageUrl) {
-        imageUrl = (response as any)._generatedImageUrl;
-      } else if (response.imageIdToDisplay) {
+      if (response.imageIdToDisplay) {
         const foundVisual = gameState.visuals.find(v => v.id === response.imageIdToDisplay);
         if (foundVisual) imageUrl = foundVisual.data;
       }
@@ -229,20 +228,20 @@ const App: React.FC = () => {
                   <div className="space-y-6">
                       <div className="text-left bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
                         <label className="block text-xs font-bold uppercase text-slate-500 mb-2 tracking-widest">
-                          Google Gemini API Key
+                          Anthropic API Key
                         </label>
                         <input
                           type="password"
                           value={apiKey}
                           onChange={(e) => setApiKey(e.target.value)}
-                          placeholder="Paste your key here (starts with AIzaSy...)"
+                          placeholder="Paste your key here (starts with sk-ant-...)"
                           className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-white font-mono text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all placeholder:text-slate-700"
                         />
                          <div className="flex justify-between mt-2">
                            <p className="text-[10px] text-slate-500">
-                             Key is stored locally in your browser. 
+                             Key is stored locally in your browser.
                            </p>
-                           <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[10px] text-emerald-500 hover:text-emerald-400 font-bold uppercase tracking-wide">
+                           <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-[10px] text-emerald-500 hover:text-emerald-400 font-bold uppercase tracking-wide">
                              Get Key &rarr;
                            </a>
                          </div>
@@ -280,10 +279,9 @@ const App: React.FC = () => {
           <div className="flex-1 flex flex-col overflow-hidden relative">
               <VitalsMonitor vitals={gameState.vitals} />
               <div className="flex-1 overflow-hidden relative flex flex-col">
-                  <ChatInterface 
-                    messages={gameState.messages} 
-                    isLoading={isLoading} 
-                    apiKey={apiKey}
+                  <ChatInterface
+                    messages={gameState.messages}
+                    isLoading={isLoading}
                   />
               </div>
               <Controls 
@@ -302,7 +300,7 @@ const App: React.FC = () => {
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center font-black text-white shadow-lg shadow-emerald-500/20">M</div>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-slate-100 leading-none">MediSim <span className="text-emerald-500">ER</span></h1>
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Clinical AI Engine v2.1</span>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Clinical AI Engine · Claude</span>
             </div>
         </div>
         {gameState.stage !== 'upload' && (
