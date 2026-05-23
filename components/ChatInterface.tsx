@@ -65,6 +65,7 @@ const ChatInterface: React.FC<Props> = ({ messages, isLoading }) => {
                 <button
                   onClick={() => handlePlayAudio(msg.content, idx)}
                   disabled={!ttsSupported || (playingIdx !== null && playingIdx !== idx)}
+                  aria-label={playingIdx === idx ? "Stop audio playback" : "Play simulation audio"}
                   className={`flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900/50 border border-slate-700/50 hover:bg-slate-700 transition-all group disabled:opacity-50 disabled:cursor-not-allowed ${playingIdx === idx ? 'animate-pulse border-emerald-500/50' : ''}`}
                   title={ttsSupported ? (playingIdx === idx ? 'Stop' : 'Play Clinical Voice') : 'Browser does not support Web Speech'}
                 >
@@ -125,17 +126,26 @@ const ChatInterface: React.FC<Props> = ({ messages, isLoading }) => {
 
       {/* Lightbox Overlay */}
       {lightboxImage && (
-        <div 
-          className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 md:p-12 cursor-zoom-out"
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Clinical image viewer"
+          tabIndex={0}
+          ref={(el) => el?.focus()}
+          className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 md:p-12 cursor-zoom-out outline-none"
           onClick={() => setLightboxImage(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setLightboxImage(null); }}
         >
-          <div className="relative max-w-7xl w-full max-h-full flex flex-col items-center">
-            <img 
-              src={lightboxImage} 
+          <div className="relative max-w-7xl w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightboxImage}
               className="max-w-full max-h-[85vh] object-contain shadow-[0_0_50px_rgba(16,185,129,0.2)] border border-white/10 rounded"
-              alt="Clinical Find Large"
+              alt="Clinical finding — enlarged view"
             />
-            <button className="mt-6 px-6 py-2 bg-slate-800 text-white rounded-full font-bold hover:bg-slate-700 transition-colors border border-slate-600">
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="mt-6 px-6 py-2 bg-slate-800 text-white rounded-full font-bold hover:bg-slate-700 transition-colors border border-slate-600"
+            >
               Close Viewer
             </button>
           </div>
