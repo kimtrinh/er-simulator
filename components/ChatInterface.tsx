@@ -111,7 +111,7 @@ const ChatInterface: React.FC<Props> = ({ messages, isLoading }) => {
         </div>
       ))}
       
-      {isLoading && (
+      {isLoading && !(messages.length > 0 && messages[messages.length - 1].role === 'assistant' && messages[messages.length - 1].content) && (
         <div className="flex justify-start">
           <div className="bg-slate-800/50 rounded-lg p-3 flex items-center gap-2 border border-slate-700">
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>

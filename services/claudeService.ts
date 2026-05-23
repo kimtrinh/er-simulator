@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { SimulationResponse, ExtractedImage } from "../types";
 
-const MODEL = "claude-opus-4-7";
+const CASE_MODEL = "claude-opus-4-7";
+const TURN_MODEL = "claude-sonnet-4-6";
 
 const getClient = (apiKey: string) =>
   new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
@@ -214,7 +215,7 @@ The 'intro' MUST be a scripted bedside scene, e.g.:
 Do not name or hint at the diagnosis in 'intro'. Put the clinical truth and reasoning in 'context' — that field is for the simulation engine, not the trainee.`;
 
   const response = await client.messages.create({
-    model: MODEL,
+    model: CASE_MODEL,
     max_tokens: 8000,
     system: CASE_ARCHITECT_SYSTEM,
     thinking: { type: "adaptive" },
@@ -254,12 +255,19 @@ Do not name or hint at the diagnosis in 'intro'. Put the clinical truth and reas
   return { ...parsed, visualCatalog: finalVisuals };
 };
 
+const simulationTool: Anthropic.Messages.Tool = {
+  name: "simulation_response",
+  description: "Submit the simulation response with narrative, updated vitals, and case state.",
+  input_schema: simulationResponseJsonSchema as Anthropic.Messages.Tool.InputSchema,
+};
+
 export const progressSimulation = async (
   apiKey: string,
   context: string,
   history: string[],
   userAction: string,
-  visuals: ExtractedImage[]
+  visuals: ExtractedImage[],
+  onNarrativeUpdate?: (text: string) => void
 ): Promise<SimulationResponse> => {
   const client = getClient(apiKey);
 
@@ -280,10 +288,10 @@ ${recentHistory || "(no prior turns)"}
 Trainee action this turn:
 ${userAction}
 
-Respond with the simulation update.`;
+Respond by calling the simulation_response tool.`;
 
-  const response = await client.messages.create({
-    model: MODEL,
+  const stream = client.messages.stream({
+    model: TURN_MODEL,
     max_tokens: 4000,
     system: [
       { type: "text", text: SIM_ENGINE_SYSTEM },
@@ -293,15 +301,33 @@ Respond with the simulation update.`;
         cache_control: { type: "ephemeral" },
       },
     ],
-    output_config: {
-      effort: "medium",
-      format: { type: "json_schema", schema: simulationResponseJsonSchema },
-    },
+    output_config: { effort: "medium" },
+    tools: [simulationTool],
+    tool_choice: { type: "tool", name: "simulation_response" },
     messages: [{ role: "user", content: turnPrompt }],
   });
 
-  const text = extractJsonText(response);
-  const parsed = SimulationResponseSchema.parse(JSON.parse(text));
+  if (onNarrativeUpdate) {
+    let lastNarrative = "";
+    stream.on("inputJson", (_delta, snapshot) => {
+      if (snapshot && typeof snapshot === "object") {
+        const s = snapshot as Record<string, unknown>;
+        if (typeof s.narrative === "string" && s.narrative !== lastNarrative) {
+          lastNarrative = s.narrative;
+          onNarrativeUpdate(s.narrative);
+        }
+      }
+    });
+  }
+
+  const finalMsg = await stream.finalMessage();
+
+  const toolBlock = finalMsg.content.find(
+    (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use"
+  );
+  if (!toolBlock) throw new Error("Claude response contained no tool_use block");
+
+  const parsed = SimulationResponseSchema.parse(toolBlock.input);
 
   let validImageId: string | undefined;
   if (parsed.imageIdToDisplay && visuals.some((v) => v.id === parsed.imageIdToDisplay)) {

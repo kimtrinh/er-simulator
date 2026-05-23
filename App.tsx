@@ -144,21 +144,35 @@ const App: React.FC = () => {
     if (isLoading) return;
 
     const userMsg: Message = { role: 'user', content: actionText, timestamp: Date.now() };
-    setGameState(prev => ({ ...prev, messages: [...prev.messages, userMsg] }));
+    const placeholderMsg: Message = { role: 'assistant', content: '', timestamp: Date.now() };
+    setGameState(prev => ({
+      ...prev,
+      messages: [...prev.messages, userMsg, placeholderMsg],
+    }));
     setIsLoading(true);
     setError(null);
 
     try {
-      const historyStrings = gameState.messages.map(m => 
+      const historyStrings = gameState.messages.map(m =>
         `${m.role === 'user' ? 'USER' : 'SIM'}: ${m.content}`
       );
-      
+
       const response = await progressSimulation(
         apiKey,
-        gameState.caseContext, 
-        historyStrings, 
-        actionText, 
-        gameState.visuals
+        gameState.caseContext,
+        historyStrings,
+        actionText,
+        gameState.visuals,
+        (narrativeSoFar) => {
+          setGameState(prev => {
+            const msgs = [...prev.messages];
+            const last = msgs[msgs.length - 1];
+            if (last && last.role === 'assistant') {
+              msgs[msgs.length - 1] = { ...last, content: narrativeSoFar };
+            }
+            return { ...prev, messages: msgs };
+          });
+        }
       );
 
       let imageUrl: string | undefined = undefined;
@@ -167,7 +181,7 @@ const App: React.FC = () => {
         if (foundVisual) imageUrl = foundVisual.data;
       }
 
-      const sysMsg: Message = {
+      const finalMsg: Message = {
         role: 'assistant',
         content: response.narrative,
         timestamp: Date.now(),
@@ -176,22 +190,37 @@ const App: React.FC = () => {
       };
 
       if (response.isCaseOver && response.debriefData) {
-        setGameState(prev => ({
-          ...prev,
-          vitals: response.updatedVitals,
-          messages: [...prev.messages, sysMsg],
-          debriefData: response.debriefData,
-          stage: 'debrief'
-        }));
+        setGameState(prev => {
+          const msgs = [...prev.messages];
+          msgs[msgs.length - 1] = finalMsg;
+          return {
+            ...prev,
+            vitals: response.updatedVitals,
+            messages: msgs,
+            debriefData: response.debriefData,
+            stage: 'debrief',
+          };
+        });
       } else {
-        setGameState(prev => ({
-          ...prev,
-          vitals: response.updatedVitals,
-          messages: [...prev.messages, sysMsg]
-        }));
+        setGameState(prev => {
+          const msgs = [...prev.messages];
+          msgs[msgs.length - 1] = finalMsg;
+          return {
+            ...prev,
+            vitals: response.updatedVitals,
+            messages: msgs,
+          };
+        });
       }
     } catch (err: any) {
       console.error("Simulation error:", err);
+      setGameState(prev => {
+        const msgs = [...prev.messages];
+        if (msgs[msgs.length - 1]?.role === 'assistant' && !msgs[msgs.length - 1]?.content) {
+          msgs.pop();
+        }
+        return { ...prev, messages: msgs };
+      });
       setError(`Clinical Engine Error: ${err.message}`);
     } finally {
       setIsLoading(false);
