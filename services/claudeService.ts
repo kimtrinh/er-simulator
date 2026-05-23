@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { SimulationResponse, ExtractedImage } from "../types";
 
-const MODEL = "claude-opus-4-7";
+const CASE_MODEL = "claude-opus-4-7";
+const TURN_MODEL = "claude-sonnet-4-6";
 
 const getClient = (apiKey: string) =>
   new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
@@ -214,7 +215,7 @@ The 'intro' MUST be a scripted bedside scene, e.g.:
 Do not name or hint at the diagnosis in 'intro'. Put the clinical truth and reasoning in 'context' — that field is for the simulation engine, not the trainee.`;
 
   const response = await client.messages.create({
-    model: MODEL,
+    model: CASE_MODEL,
     max_tokens: 8000,
     system: CASE_ARCHITECT_SYSTEM,
     thinking: { type: "adaptive" },
@@ -254,12 +255,45 @@ Do not name or hint at the diagnosis in 'intro'. Put the clinical truth and reas
   return { ...parsed, visualCatalog: finalVisuals };
 };
 
+/**
+ * Extract the "narrative" string value from a partially-streamed JSON string.
+ * Works because "narrative" is the first key in the schema, so it streams early.
+ */
+function extractPartialNarrative(json: string): string | null {
+  let idx = json.indexOf('"narrative":"');
+  let start = idx !== -1 ? idx + '"narrative":"'.length : -1;
+  if (start === -1) {
+    idx = json.indexOf('"narrative": "');
+    start = idx !== -1 ? idx + '"narrative": "'.length : -1;
+  }
+  if (start === -1) return null;
+
+  let result = "";
+  for (let i = start; i < json.length; i++) {
+    if (json[i] === "\\" && i + 1 < json.length) {
+      const next = json[i + 1];
+      if (next === '"') { result += '"'; i++; }
+      else if (next === "n") { result += "\n"; i++; }
+      else if (next === "t") { result += "\t"; i++; }
+      else if (next === "\\") { result += "\\"; i++; }
+      else if (next === "/") { result += "/"; i++; }
+      else { result += json[i]; }
+    } else if (json[i] === '"') {
+      break;
+    } else {
+      result += json[i];
+    }
+  }
+  return result;
+}
+
 export const progressSimulation = async (
   apiKey: string,
   context: string,
   history: string[],
   userAction: string,
-  visuals: ExtractedImage[]
+  visuals: ExtractedImage[],
+  onNarrativeUpdate?: (text: string) => void
 ): Promise<SimulationResponse> => {
   const client = getClient(apiKey);
 
@@ -282,8 +316,8 @@ ${userAction}
 
 Respond with the simulation update.`;
 
-  const response = await client.messages.create({
-    model: MODEL,
+  const stream = client.messages.stream({
+    model: TURN_MODEL,
     max_tokens: 4000,
     system: [
       { type: "text", text: SIM_ENGINE_SYSTEM },
@@ -300,7 +334,15 @@ Respond with the simulation update.`;
     messages: [{ role: "user", content: turnPrompt }],
   });
 
-  const text = extractJsonText(response);
+  if (onNarrativeUpdate) {
+    stream.on("text", (_delta, snapshot) => {
+      const partial = extractPartialNarrative(snapshot);
+      if (partial) onNarrativeUpdate(partial);
+    });
+  }
+
+  const finalMsg = await stream.finalMessage();
+  const text = extractJsonText(finalMsg);
   const parsed = SimulationResponseSchema.parse(JSON.parse(text));
 
   let validImageId: string | undefined;
