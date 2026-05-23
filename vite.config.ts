@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // The Anthropic SDK's Beta.Environments.Work resource statically imports
 // node-only helpers (tools/agent-toolset/{node,skills,fs-util}.mjs) that
@@ -32,7 +33,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
 
   return {
-    plugins: [react(), stubAnthropicNodeTools()],
+    plugins: [react(), tailwindcss(), stubAnthropicNodeTools()],
     define: {
       // Replaces `process.env.ANTHROPIC_API_KEY` at build time with the value
       // from `.env.local` (local dev) or the host environment (CI/Vercel).
