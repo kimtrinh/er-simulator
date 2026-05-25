@@ -56,6 +56,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [lastFailedAction, setLastFailedAction] = useState<string | null>(null);
 
   useEffect(() => {
     if (gameState.stage !== 'upload') {
@@ -155,6 +156,7 @@ const App: React.FC = () => {
     }));
     setIsLoading(true);
     setError(null);
+    setLastFailedAction(null);
 
     try {
       const historyStrings = gameState.messages.map(m =>
@@ -225,6 +227,7 @@ const App: React.FC = () => {
         }
         return { ...prev, messages: msgs };
       });
+      setLastFailedAction(actionText);
       setError(`Clinical Engine Error: ${err.message}`);
     } finally {
       setIsLoading(false);
@@ -347,7 +350,14 @@ const App: React.FC = () => {
         )}
       </header>
       {renderContent()}
-      {error && <ErrorModal message={error} onDismiss={clearError} />}
+      {error && <ErrorModal
+        message={error}
+        onDismiss={clearError}
+        onRetry={lastFailedAction ? () => {
+          clearError();
+          handleUserAction(lastFailedAction);
+        } : undefined}
+      />}
     </div>
   );
 };
